@@ -1,17 +1,21 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
+import * as googleCloudTranslate from '@google-cloud/translate'
+
 // Remember to rename these classes and interfaces!
 
-interface MyPluginSettings {
+interface MyDictionarySettings {
 	mySetting: string;
+	fromLanguage: string;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+const DEFAULT_SETTINGS: MyDictionarySettings = {
+	mySetting: 'default',
+	fromLanguage: 'en'
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class MyDictionary extends Plugin {
+	settings: MyDictionarySettings;
 
 	async onload() {
 		await this.loadSettings();
@@ -22,7 +26,7 @@ export default class MyPlugin extends Plugin {
 			new Notice('This is a notice!');
 		});
 		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+		ribbonIconEl.addClass('my-dictionary-ribbon-class');
 
 		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
 		const statusBarItemEl = this.addStatusBarItem();
@@ -71,11 +75,44 @@ export default class MyPlugin extends Plugin {
 		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
 		// Using this function will automatically remove the event listener when this plugin is disabled.
 		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
+			console.log('click XXX ', evt);
 		});
 
 		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+
+		this.registerEvent(this.app.vault.on('modify', async f => {
+			const file = this.app.vault.getFileByPath(f.path);
+			if (file != null) {
+				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+
+				const cursorLineIndex = view?.file === file
+					? view.editor.getCursor().line
+					: -1
+
+				const cachedData = await f.vault.cachedRead(file)
+				const processedData = (
+					await Promise.all(
+						cachedData
+							.split('\n')
+							.map(async (line, index) => {
+								if (index === cursorLineIndex) return line
+								if (line.includes(':')) return line
+
+								const l = line.trim()
+								const t = await translate(l);
+
+								return `${l} : ${t}`
+							})
+					)
+				).join('\n')
+
+				f.vault.process(
+					file,
+					data => data === cachedData ? processedData : data
+				)
+			}
+		}))
 	}
 
 	onunload() {
@@ -108,9 +145,9 @@ class SampleModal extends Modal {
 }
 
 class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+	plugin: MyDictionary;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: MyDictionary) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -130,5 +167,51 @@ class SampleSettingTab extends PluginSettingTab {
 					this.plugin.settings.mySetting = value;
 					await this.plugin.saveSettings();
 				}));
+
+		new Setting(containerEl)
+			.setName('From Language')
+			.setDesc('From Language')
+			.addText(text => text
+				.setPlaceholder('Enter your from language')
+				.setValue(this.plugin.settings.fromLanguage)
+				.onChange(async (value) => {
+					this.plugin.settings.fromLanguage = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 }
+
+
+
+
+
+
+async function translate(input: string): Promise<string> {
+
+// Creates a client
+const translate = new googleCloudTranslate.v2.Translate({ key: 'PASTE_GOOGLE_API_KEY_HERE' });
+
+/**
+ * TODO(developer): Uncomment the following lines before running the sample.
+ */
+// const input = 'The text to translate, e.g. Hello, world!';
+// const target = 'The target language, e.g. ru';
+
+  // Translates the text into the target language. "input" can be a string for
+  // translating a single piece of text, or an array of strings for translating
+  // multiple texts.
+	//const input = ['car']
+	const target = 'ru'
+
+	let [translations] = await translate.translate([input], target);
+	translations = Array.isArray(translations) ? translations : [translations];
+
+	console.log('Translations:');
+	translations.forEach((translation, i) => {
+		console.log(`${input[i]} => (${target}) ${translation}`);
+	});
+
+	return translations[0]
+}
+
+
