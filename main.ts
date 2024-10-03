@@ -82,38 +82,42 @@ export default class MyDictionary extends Plugin {
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
 
 		this.registerEvent(this.app.vault.on('modify', async f => {
+			const m = f.name.match(/^.*\.(\w{2})-(\w{2})\.md$/)
+			if (m == null) return
+			const [, fromLanguage, toLanguage] = m
+
 			const file = this.app.vault.getFileByPath(f.path);
-			if (file != null) {
-				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (file == null) return
 
-				const cursorLineIndex = view?.file === file
-					? view.editor.getCursor().line
-					: -1
+			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 
-				const cachedData = await f.vault.cachedRead(file)
-				const processedData = (
-					await Promise.all(
-						cachedData
-							.split('\n')
-							.map(async (line, index) => {
-								if (index === cursorLineIndex) return line
-								if (line.includes(':')) return line
+			const cursorLineIndex = view?.file === file
+				? view.editor.getCursor().line
+				: -1
 
-								const l = line.trim()
-								if (l.length <= 0) return line
+			const cachedData = await f.vault.cachedRead(file)
+			const processedData = (
+				await Promise.all(
+					cachedData
+						.split('\n')
+						.map(async (line, index) => {
+							if (index === cursorLineIndex) return line
+							if (line.includes(':')) return line
 
-								const t = await translate(this.settings.apiKey, l);
+							const l = line.trim()
+							if (l.length <= 0) return line
 
-								return `${l} : ${t}`
-							})
-					)
-				).join('\n')
+							const t = await translate(this.settings.apiKey, fromLanguage, toLanguage, l);
 
-				f.vault.process(
-					file,
-					data => data === cachedData ? processedData : data
+							return `${l} : ${t}`
+						})
 				)
-			}
+			).join('\n')
+
+			f.vault.process(
+				file,
+				data => data === cachedData ? processedData : data
+			)
 		}))
 	}
 
@@ -177,24 +181,15 @@ class SampleSettingTab extends PluginSettingTab {
 
 
 
-async function translate(apiKey: string, input: string): Promise<string> {
+async function translate(
+	apiKey: string,
+	fromLanguage: string,
+	toLanguage: string,
+	input: string
+): Promise<string> {
+	const translate = new googleCloudTranslate.v2.Translate({ key: apiKey });
 
-// Creates a client
-const translate = new googleCloudTranslate.v2.Translate({ key: apiKey });
-
-/**
- * TODO(developer): Uncomment the following lines before running the sample.
- */
-// const input = 'The text to translate, e.g. Hello, world!';
-// const target = 'The target language, e.g. ru';
-
-  // Translates the text into the target language. "input" can be a string for
-  // translating a single piece of text, or an array of strings for translating
-  // multiple texts.
-	//const input = ['car']
-	const target = 'ru'
-
-	let [translations] = await translate.translate([input], target);
+	let [translations] = await translate.translate([input], toLanguage);
 	translations = Array.isArray(translations) ? translations : [translations];
 
 	return translations[0]
