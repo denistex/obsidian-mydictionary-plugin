@@ -5,12 +5,12 @@ import * as googleCloudTranslate from '@google-cloud/translate'
 // Remember to rename these classes and interfaces!
 
 interface MyDictionarySettings {
-	mySetting: string;
+	apiKey: string;
 	fromLanguage: string;
 }
 
 const DEFAULT_SETTINGS: MyDictionarySettings = {
-	mySetting: 'default',
+	apiKey: '',
 	fromLanguage: 'en'
 }
 
@@ -100,7 +100,9 @@ export default class MyDictionary extends Plugin {
 								if (line.includes(':')) return line
 
 								const l = line.trim()
-								const t = await translate(l);
+								if (l.length <= 0) return line
+
+								const t = await translate(this.settings.apiKey, l);
 
 								return `${l} : ${t}`
 							})
@@ -158,24 +160,13 @@ class SampleSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
+			.setName('API Key')
+			.setDesc('Google Cloud Translation API Key')
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+				.setPlaceholder('Google Cloud Translation API Key')
+				.setValue(this.plugin.settings.apiKey)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('From Language')
-			.setDesc('From Language')
-			.addText(text => text
-				.setPlaceholder('Enter your from language')
-				.setValue(this.plugin.settings.fromLanguage)
-				.onChange(async (value) => {
-					this.plugin.settings.fromLanguage = value;
+					this.plugin.settings.apiKey = value;
 					await this.plugin.saveSettings();
 				}));
 	}
@@ -186,10 +177,10 @@ class SampleSettingTab extends PluginSettingTab {
 
 
 
-async function translate(input: string): Promise<string> {
+async function translate(apiKey: string, input: string): Promise<string> {
 
 // Creates a client
-const translate = new googleCloudTranslate.v2.Translate({ key: 'PASTE_GOOGLE_API_KEY_HERE' });
+const translate = new googleCloudTranslate.v2.Translate({ key: apiKey });
 
 /**
  * TODO(developer): Uncomment the following lines before running the sample.
@@ -205,11 +196,6 @@ const translate = new googleCloudTranslate.v2.Translate({ key: 'PASTE_GOOGLE_API
 
 	let [translations] = await translate.translate([input], target);
 	translations = Array.isArray(translations) ? translations : [translations];
-
-	console.log('Translations:');
-	translations.forEach((translation, i) => {
-		console.log(`${input[i]} => (${target}) ${translation}`);
-	});
 
 	return translations[0]
 }
